@@ -70,8 +70,8 @@ function sheetToMapping(sheet) {
       - second column = code/value
     */
     const values = Object.values(record);
-    const name = values[0];
-    const code = values[1];
+    const name = values[1];
+    const code = values[2];
 
     if (name && code) {
       mapping[String(name).trim()] = String(code).trim();
