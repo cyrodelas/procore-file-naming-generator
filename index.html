@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Procore File Naming Generator</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      background: #ffffff;
+    }
+
+    h1 {
+      text-align: center;
+      color: navy;
+      font-weight: bold;
+      margin-bottom: 30px;
+    }
+
+    .section-title {
+      font-weight: bold;
+      color: navy;
+      font-size: 18px;
+      margin-top: 20px;
+      margin-bottom: 15px;
+    }
+
+    .row-left {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .row-center {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .field {
+      flex: 0 0 auto;
+      min-width: 180px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 7px;
+      box-sizing: border-box;
+    }
+
+    input[readonly] {
+      background: #f4f4f4;
+      color: #555;
+    }
+
+    .btn-container {
+      text-align: center;
+      margin: 30px 0;
+    }
+
+    button {
+      padding: 10px;
+      width: 120px;
+      cursor: pointer;
+      margin: 0 5px;
+    }
+
+    button:disabled,
+    select:disabled,
+    input:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    #result-box {
+      background: #e0e0e0;
+      padding: 15px;
+      display: none;
+      text-align: center;
+      border-radius: 4px;
+      word-break: break-word;
+    }
+
+    .filename {
+      color: green;
+      font-weight: bold;
+    }
+
+    .preview {
+      font-size: 11px;
+      color: gray;
+      margin-top: 3px;
+    }
+
+    .reminder {
+      position: fixed;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-weight: bold;
+      text-align: center;
+      color: red;
+      background: #fff;
+      padding: 5px 10px;
+      border-radius: 4px;
+      max-width: 90%;
+      box-shadow: 0 0 6px rgba(0,0,0,0.15);
+      z-index: 999;
+    }
+
+    .status-box {
+      text-align: center;
+      margin-bottom: 20px;
+      padding: 10px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+
+    .status-loading {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .status-success {
+      background: #d4edda;
+      color: #155724;
+      display: none;
+    }
+
+    .status-error {
+      background: #f8d7da;
+      color: #721c24;
+      display: none;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        margin: 20px;
+      }
+
+      .field {
+        width: 100%;
+        min-width: 100%;
+      }
+
+      .row-left select {
+        width: 100%;
+      }
+
+      button {
+        width: 100%;
+        margin: 5px 0;
+      }
+
+      .reminder {
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Procore File Naming Generator</h1>
+
+  <div id="statusBox" class="status-box status-loading">
+    Loading Smartsheet mapping data...
+  </div>
+
+  <div class="reminder">
+    If this app does not work directly, select “Open” in the upper right tab, then click “Open in App”.
+  </div>
+
+  <div class="section-title">Project Phases and Categories</div>
+
+  <div class="row-left">
+    <select id="phase" onchange="loadCategory()" disabled>
+      <option value="">Phase</option>
+      <option value="DP">Design</option>
+      <option value="PCP">Preconstruction</option>
+      <option value="C">Construction</option>
+    </select>
+
+    <select id="category" onchange="loadFields()" disabled>
+      <option value="">Category</option>
+    </select>
+  </div>
+
+  <div class="section-title">File Codes</div>
+
+  <div id="fields" class="row-center"></div>
+
+  <div class="btn-container">
+    <button id="generateBtn" onclick="generate()" disabled>Generate</button>
+    <button onclick="clearForm()">Clear</button>
+  </div>
+
+  <div id="result-box">
+    <span id="result"></span>
+  </div>
+
+  <script>
+    // ============================================================
+    // GLOBAL SOURCES
+    // These will be loaded from /api/mappings
+    // ============================================================
+
+    let sources = {};
+
+    const fallbackDesign = {
+      "Conceptual Design": { code: "CD", series: 1000 },
+      "Schematic Design": { code: "SD", series: 2000 },
+      "Design Development Plan": { code: "DDP", series: 3000 },
+      "Building Permit Plans": { code: "BPP", series: 4000 },
+      "Bid Plans": { code: "BP", series: 5000 },
+      "For Construction Drawing": { code: "FCD", series: 6000 }
+    };
+
+    const fallbackQuery = {
+      "Construction": "Construction",
+      "Design": "Design"
+    };
+
+    // ============================================================
+    // LOAD DATA FROM VERCEL API
+    // ============================================================
+
+    async function loadSourcesFromSmartsheet() {
+      const statusBox = document.getElementById("statusBox");
+
+      try {
+        const response = await fetch("/api/mappings");
+
+        if (!response.ok) {
+          throw new Error("Failed to load mapping data from API.");
+        }
+
+        const data = await response.json();
+
+        sources = {
+          ...data,
+          design: data.design || fallbackDesign,
+          query: data.query || fallbackQuery
+        };
+
+        validateRequiredSources();
+
+        document.getElementById("phase").disabled = false;
+        document.getElementById("category").disabled = false;
+        document.getElementById("generateBtn").disabled = false;
+
+        statusBox.className = "status-box status-success";
+        statusBox.textContent = "Smartsheet mapping data loaded successfully.";
+        statusBox.style.display = "block";
+
+        setTimeout(() => {
+          statusBox.style.display = "none";
+        }, 2500);
+
+        console.log("Loaded mappings:", sources);
+
+      } catch (error) {
+        console.error(error);
+
+        statusBox.className = "status-box status-error";
+        statusBox.textContent = "Unable to load Smartsheet mapping data. Please check the API route, token, or sheet IDs.";
+        statusBox.style.display = "block";
+
+        document.getElementById("phase").disabled = true;
+        document.getElementById("category").disabled = true;
+        document.getElementById("generateBtn").disabled = true;
+      }
+    }
+
+    function validateRequiredSources() {
+      const required = ["project", "trade", "cp", "contractor", "osm", "department"];
+
+      required.forEach(key => {
+        if (!sources[key] || Object.keys(sources[key]).length === 0) {
+          throw new Error(`Missing or empty mapping source: ${key}`);
+        }
+      });
+    }
+
+    // ============================================================
+    // ABBREVIATION LOGIC
+    // ============================================================
+
+    function generateAbbreviation(text, maxLength = 5) {
+      if (!text) return "";
+
+      const words = text.trim().split(/\s+/);
+      const onlyLetters = str => str.replace(/[^a-zA-Z]/g, "");
+
+      // Single word: first letter + next consonants
+      if (words.length === 1) {
+        let clean = onlyLetters(words[0]);
+        if (!clean) return "";
+
+        let first = clean[0].toUpperCase();
+
+        let rest = clean
+          .slice(1)
+          .toUpperCase()
+          .split("")
+          .filter(l => !"AEIOU".includes(l));
+
+        let result = first + rest.slice(0, 3).join("");
+
+        // Add vowels if abbreviation is too short
+        if (result.length < 4) {
+          let vowels = clean
+            .slice(1)
+            .toUpperCase()
+            .split("")
+            .filter(l => "AEIOU".includes(l));
+
+          result += vowels.slice(0, 4 - result.length).join("");
+        }
+
+        return result.slice(0, maxLength);
+      }
+
+      // Multiple words: first letters
+      return words
+        .map(w => w[0] ? w[0].toUpperCase() : "")
+        .join("")
+        .slice(0, maxLength);
+    }
+
+    // ============================================================
+    // FORM STRUCTURE
+    // ============================================================
+
+    const structure = {
+      DP: {
+        "Drawing": [
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "autoAbbr", label: "Location Description", id: "location" },
+          { type: "dropdown", label: "Design Code", id: "design", source: "design" },
+          { type: "dropdown", label: "Trade Code", id: "trade", source: "trade" },
+          { type: "autoAbbr", label: "Drawing Description", id: "drawing" },
+          { type: "number", label: "Series (3 digit)", id: "series" },
+          { type: "numbers", label: "Sheet (2 digit)", id: "sheet" }
+        ],
+
+        "Submittal Package Title": [
+          { type: "dropdown", label: "Design Code", id: "design", source: "design" }
+        ],
+
+        "Submittal Package Number": [
+          { type: "dropdown", label: "Design Code", id: "design", source: "design" },
+          { type: "text", label: "Series Number", id: "designSeries", readonly: true }
+        ],
+
+        "Submittal Title": [
+          { type: "autoAbbr", label: "Location Description", id: "location" },
+          { type: "text", label: "Title", id: "subTitle" }
+        ],
+
+        "Submittal Number": [
+          { type: "dropdown", label: "Design Code", id: "designSN", source: "design" },
+          { type: "text", label: "Series", id: "seriesSN", readonly: true }
+        ]
+      },
+
+      PCP: {
+        "Request for Proposal Trigger": [
+          { type: "text", label: "Trigger", id: "rfpt", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Trade", id: "trade", source: "trade" },
+          { type: "number", label: "Series", id: "rfptSeries" }
+        ],
+
+        "Bid Package Title": [
+          { type: "text", label: "Trigger", id: "bpt", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Trade", id: "trade", source: "trade" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Bid Query": [
+          { type: "text", label: "Trigger", id: "bq", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Trade", id: "trade", source: "trade" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Bid Query Handover": [
+          { type: "text", label: "Trigger", id: "bqh", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Trade", id: "trade", source: "trade" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Bid Bulletin": [
+          { type: "text", label: "Trigger", id: "bb", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Trade", id: "trade", source: "trade" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Bid Opening Request": [
+          { type: "text", label: "Trigger", id: "bor", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Trade", id: "trade", source: "trade" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Purchase Requisition Trigger": [
+          { type: "text", label: "Trigger", id: "prt", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Owner Supplied Material", id: "osm", source: "osm" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Bid Clarification": [
+          { type: "text", label: "Trigger", id: "bc", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Contractor", id: "contractor", source: "contractor" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Letter of Award": [
+          { type: "text", label: "Trigger", id: "loa", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Contractor", id: "contractor", source: "contractor" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Bid Query Subject": [
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Contractor", id: "contractor", source: "contractor" },
+          { type: "dropdown", label: "Type of Query", id: "query", source: "query" }
+        ]
+      },
+
+      C: {
+        "Notice to Proceed": [
+          { type: "text", label: "Trigger", id: "ntp", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Contractor", id: "contractor", source: "contractor" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Request for Approval": [
+          { type: "text", label: "Trigger", id: "rfa", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Contractor", id: "contractor", source: "contractor" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Request for Information": [
+          { type: "text", label: "Trigger", id: "rfi", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Contractor", id: "contractor", source: "contractor" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Site Instruction": [
+          { type: "text", label: "Trigger", id: "si", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Contractor", id: "contractor", source: "contractor" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Change Order": [
+          { type: "text", label: "Trigger", id: "co", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Contractor", id: "contractor", source: "contractor" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Extension of Time": [
+          { type: "text", label: "Trigger", id: "eot", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Contractor", id: "contractor", source: "contractor" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
+        "Inspection Work Request": [
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Trigger", id: "iwr", readonly: true },
+          { type: "dropdown", label: "Trade", id: "trade", source: "trade" },
+          { type: "number", label: "Sheet (5 digit)", id: "series" }
+        ],
+
+        "Observation": [
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Trigger", id: "obs", readonly: true },
+          { type: "dropdown", label: "Trade", id: "trade", source: "trade" },
+          { type: "dropdown", label: "Department", id: "department", source: "department" },
+          { type: "number", label: "Sheet (5 digit)", id: "series" }
+        ]
+      }
+    };
+
+    // ============================================================
+    // UI FUNCTIONS
+    // ============================================================
+
+    function loadCategory() {
+      const phase = document.getElementById("phase").value;
+      const cat = document.getElementById("category");
+
+      cat.innerHTML = '<option value="">Category</option>';
+
+      if (structure[phase]) {
+        Object.keys(structure[phase]).forEach(categoryName => {
+          const opt = document.createElement("option");
+          opt.value = categoryName;
+          opt.textContent = categoryName;
+          cat.appendChild(opt);
+        });
+      }
+
+      document.getElementById("fields").innerHTML = "";
+      document.getElementById("result-box").style.display = "none";
+    }
+
+    function loadFields() {
+      const phase = document.getElementById("phase").value;
+      const category = document.getElementById("category").value;
+      const container = document.getElementById("fields");
+
+      container.innerHTML = "";
+      document.getElementById("result-box").style.display = "none";
+
+      if (!phase || !category) return;
+
+      structure[phase][category].forEach(field => {
+        const wrap = document.createElement("div");
+        wrap.className = "field";
+
+        let el;
+
+        if (field.type === "dropdown") {
+          el = document.createElement("input");
+          el.setAttribute("list", field.id + "List");
+          el.placeholder = field.label;
+
+          const list = document.createElement("datalist");
+          list.id = field.id + "List";
+
+          const map = sources[field.source] || {};
+
+          Object.keys(map).forEach(name => {
+            const option = document.createElement("option");
+            option.value = name;
+            list.appendChild(option);
+          });
+
+          wrap.appendChild(el);
+          wrap.appendChild(list);
+        } else {
+          el = document.createElement("input");
+          el.placeholder = field.label;
+
+          if (field.readonly) {
+            el.readOnly = true;
+            el.style.background = "#f9f9f9";
+          }
+
+          if (field.type === "number" || field.type === "numbers") {
+            el.type = "number";
+            el.min = "0";
+          }
+        }
+
+        el.id = field.id;
+        wrap.appendChild(el);
+
+        if (field.type === "autoAbbr") {
+          const preview = document.createElement("div");
+          preview.className = "preview";
+
+          el.addEventListener("input", () => {
+            preview.textContent = generateAbbreviation(el.value);
+          });
+
+          wrap.appendChild(preview);
+        }
+
+        container.appendChild(wrap);
+      });
+
+      applyAutoFill(category);
+    }
+
+    // ============================================================
+    // AUTO-FILL LOGIC
+    // ============================================================
+
+    function applyAutoFill(category) {
+      const currentYear = new Date().getFullYear();
+
+      if (category === "Submittal Package Number") {
+        const designInput = document.getElementById("design");
+        const seriesInput = document.getElementById("designSeries");
+
+        if (designInput && seriesInput) {
+          designInput.oninput = function () {
+            const data = sources.design[this.value];
+            seriesInput.value = data ? data.series : "";
+          };
+        }
+      }
+
+      if (category === "Submittal Number") {
+        const designSN = document.getElementById("designSN");
+        const seriesSN = document.getElementById("seriesSN");
+
+        if (designSN && seriesSN) {
+          designSN.oninput = function () {
+            const data = sources.design[this.value];
+            seriesSN.value = data ? `${data.series + 1}` : "";
+          };
+        }
+      }
+
+      const autofillMap = {
+        "Request for Proposal Trigger": { id: "rfpt", value: "RFPT", year: true },
+        "Bid Package Title": { id: "bpt", value: "BP", year: true },
+        "Bid Query": { id: "bq", value: "BQ-(CAD/SCM)", year: true },
+        "Bid Query Handover": { id: "bqh", value: "BQH", year: true },
+        "Bid Bulletin": { id: "bb", value: "BB-(CAD/SCM)", year: true },
+        "Bid Opening Request": { id: "bor", value: "BOR", year: true },
+        "Purchase Requisition Trigger": { id: "prt", value: "PRT", year: true },
+        "Bid Clarification": { id: "bc", value: "BC", year: true },
+        "Letter of Award": { id: "loa", value: "LOA", year: true },
+        "Notice to Proceed": { id: "ntp", value: "NTP", year: true },
+        "Request for Approval": { id: "rfa", value: "RFA", year: true },
+        "Request for Information": { id: "rfi", value: "RFI", year: true },
+        "Site Instruction": { id: "si", value: "SI", year: true },
+        "Change Order": { id: "co", value: "CO", year: true },
+        "Extension of Time": { id: "eot", value: "EOT", year: true },
+        "Inspection Work Request": { id: "iwr", value: "IWR", year: false },
+        "Observation": { id: "obs", value: "OBS", year: false }
+      };
+
+      const config = autofillMap[category];
+
+      if (config) {
+        const triggerEl = document.getElementById(config.id);
+
+        if (triggerEl) {
+          triggerEl.value = config.value;
+        }
+
+        const yearEl = document.getElementById("year");
+
+        if (config.year && yearEl) {
+          yearEl.value = currentYear;
+        }
+      }
+    }
+
+    // ============================================================
+    // GENERATE FILE NAME
+    // ============================================================
+
+    function generate() {
+      const phase = document.getElementById("phase").value;
+      const category = document.getElementById("category").value;
+
+      if (!phase || !category) {
+        alert("Please select Phase and Category.");
+        return;
+      }
+
+      const parts = [];
+      const fields = structure[phase][category];
+
+      for (const field of fields) {
+        const el = document.getElementById(field.id);
+        const val = el ? el.value.trim() : "";
+
+        if (!val) {
+          alert(field.label + " required.");
+          return;
+        }
+
+        // Skip readonly display-only fields
+        if (field.id === "designSeries" || field.id === "seriesSN") {
+          continue;
+        }
+
+        if (field.source) {
+          const map = sources[field.source] || {};
+          const data = map[val];
+
+          if (!data) {
+            alert("Invalid " + field.label + ".");
+            return;
+          }
+
+          if (field.source === "design") {
+            if (category === "Submittal Package Title") {
+              parts.push(data.code);
+              parts.push(val);
+              continue;
+            }
+
+            if (category === "Submittal Package Number") {
+              parts.push(data.series.toString());
+              continue;
+            }
+
+            if (category === "Submittal Number") {
+              parts.push((data.series + 1).toString());
+              continue;
+            }
+
+            parts.push(data.code);
+            continue;
+          }
+
+          parts.push(data);
+          continue;
+        }
+
+        if (field.type === "autoAbbr") {
+          parts.push(generateAbbreviation(val));
+          continue;
+        }
+
+        if (field.type === "number") {
+          parts.push(val.padStart(3, "0"));
+          continue;
+        }
+
+        if (field.type === "numbers") {
+          parts.push(val.padStart(2, "0"));
+          continue;
+        }
+
+        parts.push(val);
+      }
+
+      const phaseText = document.getElementById("phase").selectedOptions[0].text;
+      const categoryText = document.getElementById("category").selectedOptions[0].text;
+      const prefix = `<b>${phaseText} - ${categoryText} :</b> `;
+
+      document.getElementById("result").innerHTML =
+        `${prefix}<span class="filename">${parts.join("-")}</span>`;
+
+      document.getElementById("result-box").style.display = "block";
+    }
+
+    // ============================================================
+    // CLEAR FORM
+    // ============================================================
+
+    function clearForm() {
+      document.getElementById("phase").value = "";
+      document.getElementById("category").innerHTML = '<option value="">Category</option>';
+      document.getElementById("fields").innerHTML = "";
+      document.getElementById("result-box").style.display = "none";
+    }
+
+    // ============================================================
+    // INITIALIZE
+    // ============================================================
+
+    window.addEventListener("DOMContentLoaded", () => {
+      loadSourcesFromSmartsheet();
+    });
+  </script>
+
+</body>
+</html>
