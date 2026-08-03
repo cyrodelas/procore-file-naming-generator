@@ -836,6 +836,15 @@
           { type: "number", label: "Series", id: "bptSeries" }
         ],
 
+        "Extension of Time (Request Letter)": [
+          { type: "text", label: "Trigger", id: "eot-rl", readonly: true },
+          { type: "dropdown", label: "Project Code", id: "project", source: "project" },
+          { type: "text", label: "Year", id: "year", readonly: true },
+          { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
+          { type: "dropdown", label: "Contractor", id: "contractor", source: "contractor" },
+          { type: "number", label: "Series", id: "bptSeries" }
+        ],
+
         "Inspection Work Request": [
           { type: "dropdown", label: "Project Code", id: "project", source: "project" },
           { type: "text", label: "Trigger", id: "iwr", readonly: true },
@@ -993,6 +1002,7 @@
         "Site Instruction": { id: "si", value: "SI", year: true },
         "Change Order": { id: "co", value: "CO", year: true },
         "Extension of Time": { id: "eot", value: "EOT", year: true },
+        "Extension of Time (Request Letter)": { id: "eot-rl", value: "EOT-RL", year: true },
         "Inspection Work Request": { id: "iwr", value: "IWR", year: false },
         "Observation": { id: "obs", value: "OBS", year: false }
       };
