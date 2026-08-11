@@ -713,7 +713,7 @@
 
         "Bid Query": [
           { type: "text", label: "Trigger", id: "bq", readonly: true },
-          { type: "fixedDropdown", label: "CAD / SCM", id: "bidGroup", options: ["CAD", "SCM"], skipOutput: true },
+          { type: "fixedDropdown", label: "Select", id: "bidGroup", options: ["CAD", "SCM"], skipOutput: true },
           { type: "dropdown", label: "Project Code", id: "project", source: "project" },
           { type: "text", label: "Year", id: "year", readonly: true },
           { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
@@ -732,7 +732,7 @@
 
         "Bid Bulletin": [
           { type: "text", label: "Trigger", id: "bb", readonly: true },
-          { type: "fixedDropdown", label: "CAD / SCM", id: "bidGroup", options: ["CAD", "SCM"], skipOutput: true },
+          { type: "fixedDropdown", label: "Select", id: "bidGroup", options: ["CAD", "SCM"], skipOutput: true },
           { type: "dropdown", label: "Project Code", id: "project", source: "project" },
           { type: "text", label: "Year", id: "year", readonly: true },
           { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
@@ -1012,7 +1012,7 @@
           bidGroup.onchange = function () {
             triggerEl.value = this.value
               ? `${triggerPrefix}-${this.value}`
-              : `${triggerPrefix}-(CAD/SCM)`;
+              : triggerPrefix;
           };
         }
       }
@@ -1020,9 +1020,9 @@
       const autofillMap = {
         "Request for Proposal Trigger": { id: "rfpt", value: "RFPT", year: true },
         "Bid Package Title": { id: "bpt", value: "BP", year: true },
-        "Bid Query": { id: "bq", value: "BQ-(CAD/SCM)", year: true },
+        "Bid Query": { id: "bq", value: "BQ", year: true },
         "Bid Query Handover": { id: "bqh", value: "BQH", year: true },
-        "Bid Bulletin": { id: "bb", value: "BB-(CAD/SCM)", year: true },
+        "Bid Bulletin": { id: "bb", value: "BB", year: true },
         "Bid Opening Request": { id: "bor", value: "BOR", year: true },
         "Purchase Requisition Trigger": { id: "prt", value: "PRT", year: true },
         "Bid Clarification": { id: "bc", value: "BC", year: true },
