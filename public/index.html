@@ -713,6 +713,7 @@
 
         "Bid Query": [
           { type: "text", label: "Trigger", id: "bq", readonly: true },
+          { type: "fixedDropdown", label: "CAD / SCM", id: "bidGroup", options: ["CAD", "SCM"], skipOutput: true },
           { type: "dropdown", label: "Project Code", id: "project", source: "project" },
           { type: "text", label: "Year", id: "year", readonly: true },
           { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
@@ -731,6 +732,7 @@
 
         "Bid Bulletin": [
           { type: "text", label: "Trigger", id: "bb", readonly: true },
+          { type: "fixedDropdown", label: "CAD / SCM", id: "bidGroup", options: ["CAD", "SCM"], skipOutput: true },
           { type: "dropdown", label: "Project Code", id: "project", source: "project" },
           { type: "text", label: "Year", id: "year", readonly: true },
           { type: "dropdown", label: "Contract Package", id: "cp", source: "cp" },
@@ -919,6 +921,20 @@
 
           wrap.appendChild(el);
           wrap.appendChild(list);
+        } else if (field.type === "fixedDropdown") {
+          el = document.createElement("select");
+
+          const placeholder = document.createElement("option");
+          placeholder.value = "";
+          placeholder.textContent = field.label;
+          el.appendChild(placeholder);
+
+          (field.options || []).forEach(value => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = value;
+            el.appendChild(option);
+          });
         } else {
           el = document.createElement("input");
           el.placeholder = field.label;
@@ -986,6 +1002,21 @@
         }
       }
 
+      if (category === "Bid Query" || category === "Bid Bulletin") {
+        const bidGroup = document.getElementById("bidGroup");
+        const triggerId = category === "Bid Query" ? "bq" : "bb";
+        const triggerPrefix = category === "Bid Query" ? "BQ" : "BB";
+        const triggerEl = document.getElementById(triggerId);
+
+        if (bidGroup && triggerEl) {
+          bidGroup.onchange = function () {
+            triggerEl.value = this.value
+              ? `${triggerPrefix}-${this.value}`
+              : `${triggerPrefix}-(CAD/SCM)`;
+          };
+        }
+      }
+
       const autofillMap = {
         "Request for Proposal Trigger": { id: "rfpt", value: "RFPT", year: true },
         "Bid Package Title": { id: "bpt", value: "BP", year: true },
@@ -1049,8 +1080,8 @@
           return;
         }
 
-        // Skip readonly display-only fields
-        if (field.id === "designSeries" || field.id === "seriesSN") {
+        // Skip display-only / selector-only fields from filename output
+        if (field.id === "designSeries" || field.id === "seriesSN" || field.skipOutput) {
           continue;
         }
 
